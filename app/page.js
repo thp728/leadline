@@ -62,8 +62,8 @@ export default async function Home({ searchParams }) {
         <div className="empty">
           <p>No leads yet.</p>
           <p>
-            Ingest some: <code>npm run leads -- yc --limit 40</code> then{" "}
-            <code>npm run leads -- enrich --limit 10</code>
+            Ingest some: <code>node scripts/cli.mjs yc --limit 40</code> then{" "}
+            <code>node scripts/cli.mjs enrich --limit 10</code>
           </p>
         </div>
       ) : (
