@@ -26,9 +26,11 @@ agent should do differently from a generic codebase.
   notes to git, to fixtures, or to a commit message.
 - **Do not add a second source adapter** unless a specific gap is named. One
   working adapter beats four half-built ones.
+- **Never run `npm run build` while `npm run dev` is running.** They share
+  `.next`; the build overwrites the dev server's chunks and every page 500s with
+  `Cannot find module './NNN.js'`. Stop dev, `npm run clean`, then rebuild.
 
 ## Where to change things
-
 | Task | File |
 |---|---|
 | New source (HN, VC portfolio, funding) | `lib/ingest.mjs` + a subcommand in `scripts/cli.mjs` |

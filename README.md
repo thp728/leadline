@@ -102,3 +102,18 @@ founder said "not now". A lead is not rejected, it is timed.
 If after four weeks it does not produce 20 usable leads a week in under an hour,
 with 80% of them having a verified contact, delete it and go back to doing it by
 hand.
+
+## Troubleshooting
+
+**`Cannot find module './887.js'` / blank error page in dev**
+
+`next build` and `next dev` write to the same `.next` directory. Building while
+the dev server is running corrupts the dev chunks. Stop the dev server, then:
+
+```powershell
+npm run clean
+npm run dev
+```
+
+Never run `npm run build` with `npm run dev` still up. For production, stop dev
+first and use `npm run build && npm start`.

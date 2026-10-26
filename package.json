@@ -8,6 +8,7 @@
     "dev": "next dev -p 4317",
     "build": "next build",
     "start": "next start -p 4317",
+    "clean": "node scripts/clean.mjs",
     "leads": "node scripts/cli.mjs"
   },
   "dependencies": {
