@@ -38,3 +38,18 @@ agent should do differently from a generic codebase.
 | Table, filters, detail view | `app/page.js`, `app/c/[slug]/page.js` |
 | Outreach form fields | `app/c/[slug]/page.js` + `app/actions.js` |
 | Styling | `app/globals.css` (no UI library, no Tailwind) |
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `thp728/leadline`, via `gh`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five canonical roles, label strings equal to their names. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `GLOSSARY.md` plus `docs/adr/`. See `docs/agents/domain.md`.
