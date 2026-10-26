@@ -1,0 +1,21 @@
+{
+  "name": "leadline",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Personal lead pipeline for founder-led job outreach. Own corpus, no third-party calls in the request path.",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 4317",
+    "build": "next build",
+    "start": "next start -p 4317",
+    "leads": "node scripts/cli.mjs"
+  },
+  "dependencies": {
+    "next": "^15.5.28",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
