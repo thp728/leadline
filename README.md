@@ -26,6 +26,7 @@ Two rules keep it from rotting:
 ```powershell
 npm install
 npm run dev            # http://localhost:4317
+npm test               # domain-core suite, node --test, no extra deps
 ```
 
 Ingest and enrich from the CLI:

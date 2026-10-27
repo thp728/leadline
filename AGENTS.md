@@ -34,7 +34,8 @@ agent should do differently from a generic codebase.
 | Task | File |
 |---|---|
 | New source (HN, VC portfolio, funding) | `lib/ingest.mjs` + a subcommand in `scripts/cli.mjs` |
-| Data shape / dedupe / dossiers | `lib/store.mjs` |
+| Decisions: slug, domain, dedupe, list filters | `lib/core.mjs` + `test/core.test.mjs` |
+| JSON persistence / dossiers | `lib/store.mjs` |
 | Table, filters, detail view | `app/page.js`, `app/c/[slug]/page.js` |
 | Outreach form fields | `app/c/[slug]/page.js` + `app/actions.js` |
 | Styling | `app/globals.css` (no UI library, no Tailwind) |
