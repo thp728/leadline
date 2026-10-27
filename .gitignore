@@ -9,3 +9,4 @@ data/*
 
 # Generated mock corpus for UI work. Recreate with `npm run mock`.
 data-mock/
+.next-mock/

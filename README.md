@@ -42,7 +42,8 @@ npm run dev:mock       # http://localhost:4318, generates the corpus if missing
 fresh clone needs only `npm install && npm run dev:mock`. Dates are relative to
 the day you generate it; pass `--today 2026-10-27` to `npm run mock` for a fixed
 corpus. The mock writer refuses to target `data/`, and the dev script uses its
-own port, so it can run beside the real app without touching your corpus.
+own port and build directory, so it can run beside the real app without
+touching your corpus.
 
 The fixture covers what the UI branches on: all three research states and all
 ten Lead statuses, zero to three Leads per company, repeat names that take a

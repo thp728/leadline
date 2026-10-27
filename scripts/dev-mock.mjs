@@ -45,7 +45,7 @@ console.log(`mock UI -> http://localhost:${port} (data: ${dataRoot})`);
 const child = spawn(process.execPath, [nextBin, "dev", "-p", String(port)], {
   cwd: process.cwd(),
   stdio: "inherit",
-  env: { ...process.env, LEADLINE_DATA: dataRoot },
+  env: { ...process.env, LEADLINE_DATA: dataRoot, LEADLINE_DIST: ".next-mock" },
 });
 
 child.on("exit", (code, signal) => {
