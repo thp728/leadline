@@ -6,3 +6,6 @@ out/
 # Personal data: leads, contacts, outreach history. Never committed.
 data/*
 !data/.gitkeep
+
+# Generated mock corpus for UI work. Recreate with `npm run mock`.
+data-mock/

@@ -6,10 +6,12 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 4317",
+    "dev:mock": "node scripts/dev-mock.mjs",
     "build": "next build",
     "start": "next start -p 4317",
     "clean": "node scripts/clean.mjs",
     "test": "node --test",
+    "mock": "node scripts/mock.mjs",
     "leads": "node scripts/cli.mjs"
   },
   "dependencies": {

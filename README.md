@@ -26,8 +26,30 @@ Two rules keep it from rotting:
 ```powershell
 npm install
 npm run dev            # http://localhost:4317
-npm test               # domain-core suite, node --test, no extra deps
+npm test               # node --test, no extra deps
 ```
+
+## Mock corpus
+
+For UI work there is a generated corpus with no real people in it:
+
+```powershell
+npm run mock           # writes data-mock/db.json and its dossiers
+npm run dev:mock       # http://localhost:4318, generates the corpus if missing
+```
+
+`data-mock/` is gitignored and regenerated from `scripts/mock-data.mjs`, so a
+fresh clone needs only `npm install && npm run dev:mock`. Dates are relative to
+the day you generate it; pass `--today 2026-10-27` to `npm run mock` for a fixed
+corpus. The mock writer refuses to target `data/`, and the dev script uses its
+own port, so it can run beside the real app without touching your corpus.
+
+The fixture covers what the UI branches on: all three research states and all
+ten Lead statuses, zero to three Leads per company, repeat names that take a
+`-2` id, verified and unverified emails, missing fields, long and Unicode
+strings, stale hiring snapshots, empty boards, no board, attempts from zero to
+three, and next touches and revisits that are overdue, due today and scheduled.
+`test/mock.test.mjs` keeps the coverage honest.
 
 Ingest and enrich from the CLI:
 
