@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCompany, CHANNELS, STAGES } from "../../../lib/store.mjs";
-import { saveOutreach } from "../../actions.js";
+import { getCompany, RESEARCH_STATUSES } from "../../../lib/store.mjs";
+import { legalLeadTransitions, legalResearchTransitions, contactSummary } from "../../../lib/core.mjs";
+import { saveLeadStatus, savePerson, saveResearchStatus } from "../../actions.js";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +11,9 @@ export default async function CompanyPage({ params }) {
   const row = getCompany(slug);
   if (!row) notFound();
 
-  const { company: c, outreach: o } = row;
+  const { company: c, leads } = row;
   const roles = c.hiring?.roles || [];
+  const research = c.researchStatus || "untriaged";
 
   return (
     <main className="wrap">
@@ -21,7 +23,7 @@ export default async function CompanyPage({ params }) {
 
       <div className="title">
         <h1>{c.name}</h1>
-        <span className={`chip ${o.stage}`}>{o.stage}</span>
+        <span className={`chip ${research}`}>{research}</span>
       </div>
       <div className="meta-line">
         {c.oneLiner ? `${c.oneLiner} · ` : ""}
@@ -84,24 +86,38 @@ export default async function CompanyPage({ params }) {
           </div>
 
           <div className="card" style={{ marginBottom: 18 }}>
-            <h2>People</h2>
-            {(c.people || []).length ? (
+            <h2>Leads {leads.length ? `(${leads.length})` : ""}</h2>
+            {leads.length ? (
               <ul className="roles">
-                {c.people.map((p, i) => (
-                  <li key={`${p.name}-${i}`}>
-                    <span>
-                      <b>{p.name}</b>
-                      {p.role ? <span className="sub"> · {p.role}</span> : null}
-                    </span>
-                    <span className="sub">
-                      {p.email ? `${p.email}${p.emailVerified ? " ✓" : " (unverified)"}` : p.handle || ""}
-                    </span>
+                {leads.map((l) => (
+                  <li key={l.leadId} className="lead">
+                    <div>
+                      <b>{l.person?.name || "(unknown person)"}</b>
+                      {l.person?.role ? <span className="sub"> · {l.person.role}</span> : null}
+                      <div className="sub">
+                        <code>{l.leadId}</code>
+                        {contactSummary(l.person || {}) ? ` · ${contactSummary(l.person || {})}` : ""}
+                      </div>
+                    </div>
+                    <form action={saveLeadStatus} className="inline">
+                      <input type="hidden" name="leadId" value={l.leadId} />
+                      <select name="status" defaultValue={l.status} aria-label={`Status for ${l.person?.name || l.leadId}`}>
+                        <option value={l.status}>{l.status}</option>
+                        {legalLeadTransitions(l.status).map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      <button type="submit">Move</button>
+                    </form>
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="hint">
-                Unknown. Find a named human (founder, CTO, or the engineer who owns the area) before drafting anything.
+                No named human yet. This Company is a research task, not a Lead: move its research state on the right, then name
+                the person who owns the area. Two people here become two Leads with independent statuses.
               </p>
             )}
           </div>
@@ -118,68 +134,68 @@ export default async function CompanyPage({ params }) {
           </div>
         </div>
 
-        <div className="card">
-          <h2>Outreach</h2>
-          <form action={saveOutreach}>
-            <input type="hidden" name="slug" value={c.slug} />
-
-            <div className="row2">
+        <div>
+          <div className="card" style={{ marginBottom: 18 }}>
+            <h2>Research</h2>
+            <form action={saveResearchStatus}>
+              <input type="hidden" name="company" value={c.slug} />
               <div className="field">
-                <label htmlFor="stage">Stage</label>
-                <select id="stage" name="stage" defaultValue={o.stage || "sourced"}>
-                  {STAGES.map((s) => (
+                <label htmlFor="research">Company state</label>
+                <select id="research" name="status" defaultValue={research}>
+                  <option value={research}>{research}</option>
+                  {legalResearchTransitions(research).map((s) => (
                     <option key={s} value={s}>
                       {s}
                     </option>
                   ))}
                 </select>
               </div>
+              <button type="submit">Move</button>
+            </form>
+            <p className="hint" style={{ marginTop: 14 }}>
+              Research is the Company&apos;s own state: {RESEARCH_STATUSES.join(" → ")}. It says how far the research has gone,
+              never how far a conversation has.
+            </p>
+          </div>
+
+          <div className="card">
+            <h2>Name a human</h2>
+            <form action={savePerson}>
+              <input type="hidden" name="company" value={c.slug} />
               <div className="field">
-                <label htmlFor="channel">Channel</label>
-                <select id="channel" name="channel" defaultValue={o.channel || ""}>
-                  <option value="">—</option>
-                  {CHANNELS.map((ch) => (
-                    <option key={ch} value={ch}>
-                      {ch}
-                    </option>
-                  ))}
-                </select>
+                <label htmlFor="person-name">Name</label>
+                <input id="person-name" name="name" type="text" required placeholder="Priya Sharma" />
               </div>
-            </div>
-
-            <div className="row2">
-              <div className="field">
-                <label htmlFor="firstTouch">First touch</label>
-                <input id="firstTouch" name="firstTouch" type="date" defaultValue={o.firstTouch || ""} />
+              <div className="row2">
+                <div className="field">
+                  <label htmlFor="person-role">Role</label>
+                  <input id="person-role" name="role" type="text" placeholder="Founder" />
+                </div>
+                <div className="field">
+                  <label htmlFor="person-handle">Handle</label>
+                  <input id="person-handle" name="handle" type="text" placeholder="@priya" />
+                </div>
               </div>
               <div className="field">
-                <label htmlFor="nextTouch">Next touch</label>
-                <input id="nextTouch" name="nextTouch" type="date" defaultValue={o.nextTouch || ""} />
+                <label htmlFor="person-email">Email</label>
+                <input id="person-email" name="email" type="email" placeholder="only if you found it" />
               </div>
-            </div>
-
-            <div className="field">
-              <label htmlFor="proofLink">Proof link</label>
-              <input
-                id="proofLink"
-                name="proofLink"
-                type="url"
-                placeholder="the one artifact this message leads with"
-                defaultValue={o.proofLink || ""}
-              />
-            </div>
-
-            <div className="field">
-              <label htmlFor="notes">Notes</label>
-              <textarea id="notes" name="notes" rows={6} defaultValue={o.notes || ""} />
-            </div>
-
-            <button type="submit">Save</button>
-          </form>
-
-          <p className="hint" style={{ marginTop: 14 }}>
-            Drafting and sending stay manual. This app tracks state and evidence; it never messages anyone.
-          </p>
+              <div className="field">
+                <label htmlFor="person-source">Source</label>
+                <input
+                  id="person-source"
+                  name="contactSource"
+                  type="text"
+                  placeholder="where you found this person"
+                />
+              </div>
+              <button type="submit">Add as Lead</button>
+            </form>
+            <p className="hint" style={{ marginTop: 14 }}>
+              Naming a human is what creates a Lead, at status sourced. An unverified email stays unverified; nothing here sends
+              anything.
+            </p>
+          </div>
         </div>
       </div>
     </main>

@@ -206,6 +206,17 @@ tbody tr:last-child td {
 .chip.ghosted { color: var(--bad); border-color: #5a2c2e; }
 .chip.revisit { color: #c9b3ff; border-color: #40345e; }
 
+.chip.untriaged { color: var(--muted); }
+.chip.researched { color: var(--accent); border-color: #2b4a66; }
+.chip.parked { color: var(--dim); border-color: var(--line); }
+
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
 .empty {
   border: 1px dashed var(--line);
   border-radius: 10px;

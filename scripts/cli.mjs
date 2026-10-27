@@ -5,13 +5,24 @@
  *   node scripts/cli.mjs yc --min 5 --max 150 --loc india --limit 40
  *   node scripts/cli.mjs enrich --limit 10
  *   node scripts/cli.mjs enrich --slug bolna-ai
- *   node scripts/cli.mjs list --stage sourced --json
- *   node scripts/cli.mjs set --slug bolna-ai --stage sent --channel email --next 2026-11-02
+ *   node scripts/cli.mjs list --status sourced --json
+ *   node scripts/cli.mjs add-person --company bolna-ai --name "Priya Sharma" --role Founder
+ *   node scripts/cli.mjs set-research --company bolna-ai --status researched
  *   node scripts/cli.mjs export
  */
 
 import { ycSource, enrichCompany } from "../lib/ingest.mjs";
-import { listLeads, updateOutreach, stats, loadDb, writeAllDossiers, STAGES, CHANNELS } from "../lib/store.mjs";
+import { researchRank } from "../lib/core.mjs";
+import {
+  listLeads,
+  addPerson,
+  updatePerson,
+  setResearchStatus,
+  stats,
+  loadDb,
+  writeAllDossiers,
+  RESEARCH_STATUSES,
+} from "../lib/store.mjs";
 
 function flags(argv) {
   const out = { _: [] };
@@ -41,21 +52,35 @@ function print(rows, asJson) {
     console.log(JSON.stringify(rows, null, 2));
     return;
   }
-  const header = ["stage", "company", "batch", "size", "loc", "roles", "next"];
+  if (rows.length === 0) {
+    console.log("no leads match");
+    return;
+  }
+  const header = ["status", "person", "company", "batch", "loc", "roles", "next"];
   const lines = rows.map((r) => [
-    r.outreach?.stage || "sourced",
-    r.name,
-    r.batch || "",
-    r.teamSize ?? "",
-    (r.location || "").split(",")[0],
-    r.hiring?.roles?.length ?? "",
-    r.outreach?.nextTouch || "",
+    r.status,
+    r.person?.name || "",
+    r.company?.name || "",
+    r.company?.batch || "",
+    (r.company?.location || "").split(",")[0],
+    r.company?.hiring?.roles?.length ?? "",
+    r.nextTouch || "",
   ]);
   const widths = header.map((h, i) => Math.max(h.length, ...lines.map((l) => String(l[i]).length)));
   const fmt = (l) => l.map((v, i) => String(v).padEnd(widths[i])).join("  ");
   console.log(fmt(header));
   console.log(widths.map((w) => "-".repeat(w)).join("  "));
   for (const l of lines) console.log(fmt(l));
+}
+
+/** Companies with nobody named first, then the newest batch: the research queue. */
+function researchQueue(limit) {
+  const db = loadDb();
+  const hasLead = new Set(Object.values(db.leads).map((l) => l.companySlug));
+  return Object.values(db.companies)
+    .filter((c) => !hasLead.has(c.slug))
+    .sort((a, b) => researchRank(a.researchStatus) - researchRank(b.researchStatus) || (b.batchYear || 0) - (a.batchYear || 0))
+    .slice(0, limit);
 }
 
 try {
@@ -74,20 +99,19 @@ try {
       console.log(JSON.stringify(res, null, 2));
     } else {
       const limit = Number(f.limit ?? 10);
-      const rows = listLeads({ stage: f.stage }).slice(0, limit);
-      for (const r of rows) {
+      for (const c of researchQueue(limit)) {
         try {
-          const res = await enrichCompany(r.slug);
+          const res = await enrichCompany(c.slug);
           console.log(`${res.name}: ${res.ats ? `${res.ats} / ${res.openRoles} roles` : "no ATS"}`);
         } catch (err) {
-          console.log(`${r.name}: ERROR ${err.message}`);
+          console.log(`${c.name}: ERROR ${err.message}`);
         }
       }
     }
   } else if (cmd === "list") {
     print(
       listLeads({
-        stage: f.stage,
+        status: f.status,
         q: f.q,
         source: f.source,
         hasRoles: Boolean(f["has-roles"]),
@@ -97,30 +121,53 @@ try {
     );
   } else if (cmd === "stats") {
     console.log(JSON.stringify(stats(), null, 2));
-  } else if (cmd === "set") {
-    if (!f.slug) throw new Error("--slug is required");
-    if (f.stage && !STAGES.includes(f.stage)) throw new Error(`stage must be one of: ${STAGES.join(", ")}`);
-    if (f.channel && !CHANNELS.includes(f.channel)) throw new Error(`channel must be one of: ${CHANNELS.join(", ")}`);
+  } else if (cmd === "add-person") {
+    if (!f.company) throw new Error("--company is required");
+    if (!f.name) throw new Error("--name is required");
+    const { person, lead } = addPerson(String(f.company), {
+      name: String(f.name),
+      role: f.role,
+      handle: f.handle,
+      email: f.email,
+      contactSource: f.source,
+    });
+    console.log(JSON.stringify({ person, lead }, null, 2));
+  } else if (cmd === "update-person") {
+    if (!f.lead) throw new Error("--lead is required (the person's id, e.g. bolna-ai--priya-sharma)");
     const patch = {};
-    for (const k of ["stage", "channel", "firstTouch", "lastTouch", "nextTouch", "proofLink", "notes"]) {
-      if (f[k] !== undefined) patch[k] = String(f[k]);
+    for (const key of ["name", "role", "handle", "email"]) {
+      if (f[key] !== undefined) patch[key] = String(f[key]);
     }
-    console.log(JSON.stringify(updateOutreach(String(f.slug), patch), null, 2));
+    if (f.source !== undefined) patch.contactSource = String(f.source);
+    if (Object.keys(patch).length === 0) throw new Error("nothing to change");
+    console.log(JSON.stringify(updatePerson(String(f.lead), patch), null, 2));
+  } else if (cmd === "set-research") {
+    if (!f.company) throw new Error("--company is required");
+    if (!f.status) throw new Error("--status is required");
+    if (!RESEARCH_STATUSES.includes(f.status)) {
+      throw new Error(`status must be one of: ${RESEARCH_STATUSES.join(", ")}`);
+    }
+    console.log(JSON.stringify(setResearchStatus(String(f.company), String(f.status)), null, 2));
   } else if (cmd === "dossiers") {
     writeAllDossiers();
     console.log("dossiers rewritten");
   } else if (cmd === "export") {
     const db = loadDb();
-    console.log(`${Object.keys(db.companies).length} companies in data/db.json`);
+    console.log(
+      `${Object.keys(db.companies).length} companies, ${Object.keys(db.people).length} people, ${Object.keys(db.leads).length} leads in data/db.json`,
+    );
   } else {
     console.log(`leadline
 
-  yc       --min 5 --max 150 --loc india --limit 40
-  enrich   [--slug <slug> | --limit 10]
-  list     [--stage sourced] [--source yc] [--has-roles] [--q text] [--json]
-  set      --slug <slug> [--stage sent] [--channel email] [--next 2026-11-02] [--notes "..."]
+  yc           --min 5 --max 150 --loc india --limit 40
+  enrich       [--slug <slug> | --limit 10]
+  list         [--status sourced] [--source yc] [--has-roles] [--q text] [--json]
+  add-person   --company <slug> --name "Priya Sharma" [--role Founder] [--handle @priya] [--email ...] [--source url]
+  update-person --lead <leadId> [--name ...] [--role ...] [--handle ...] [--email ...] [--source url]
+  set-research --company <slug> --status ${RESEARCH_STATUSES.join("|")}
   stats
   dossiers
+  export
 `);
   }
 } catch (err) {

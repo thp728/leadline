@@ -5,9 +5,9 @@ agent should do differently from a generic codebase.
 
 ## Interfaces, in order of preference
 
-1. **JSON** - `GET /api/leads?stage=sent&roles=1` and `GET /api/leads/<slug>`.
+1. **JSON** - `GET /api/leads?status=sourced&roles=1` and `GET /api/leads/<company-slug>`.
    Read these rather than scraping the HTML.
-2. **CLI** - `node scripts/cli.mjs list --json`, `... set --slug <slug> --stage ...`.
+2. **CLI** - `node scripts/cli.mjs list --json`, `... add-person --company <slug> --name "..."`.
 3. **Markdown dossiers** - `data/dossiers/<slug>.md`, regenerated on every write.
 
 ## Rules
@@ -34,10 +34,10 @@ agent should do differently from a generic codebase.
 | Task | File |
 |---|---|
 | New source (HN, VC portfolio, funding) | `lib/ingest.mjs` + a subcommand in `scripts/cli.mjs` |
-| Decisions: slug, domain, dedupe, list filters | `lib/core.mjs` + `test/core.test.mjs` |
-| JSON persistence / dossiers | `lib/store.mjs` |
+| Decisions: slug, domain, dedupe, lead ids, both status machines, migration, list filters | `lib/core.mjs` + `test/core.test.mjs` |
+| JSON persistence / dossiers / one-time migration write-back | `lib/store.mjs` + `test/store.test.mjs` |
 | Table, filters, detail view | `app/page.js`, `app/c/[slug]/page.js` |
-| Outreach form fields | `app/c/[slug]/page.js` + `app/actions.js` |
+| Name-a-human, Lead status, research state forms | `app/c/[slug]/page.js` + `app/actions.js` |
 | Styling | `app/globals.css` (no UI library, no Tailwind) |
 
 ## Agent skills

@@ -1,20 +1,21 @@
 import Link from "next/link";
-import { listLeads, stats, STAGES } from "../lib/store.mjs";
+import { listLeads, stats, LEAD_STATUSES, LEAD_IN_FLIGHT_STATUSES } from "../lib/store.mjs";
 
 export const dynamic = "force-dynamic";
 
-function stageChip(stage) {
-  return <span className={`chip ${stage}`}>{stage}</span>;
+function statusChip(status) {
+  return <span className={`chip ${status}`}>{status}</span>;
 }
 
 export default async function Home({ searchParams }) {
   const sp = (await searchParams) || {};
-  const stage = typeof sp.stage === "string" && sp.stage ? sp.stage : undefined;
+  const status = typeof sp.status === "string" && sp.status ? sp.status : undefined;
   const q = typeof sp.q === "string" && sp.q ? sp.q : undefined;
   const hasRoles = sp.roles === "1";
 
-  const rows = listLeads({ stage, q, hasRoles });
+  const rows = listLeads({ status, q, hasRoles });
   const s = stats();
+  const inFlight = LEAD_IN_FLIGHT_STATUSES.reduce((n, st) => n + (s.byStatus[st] || 0), 0);
 
   return (
     <main className="wrap">
@@ -24,27 +25,25 @@ export default async function Home({ searchParams }) {
         </div>
         <div className="counts">
           <span>
-            <b>{s.total}</b> leads
+            <b>{s.leads}</b> leads
           </span>
           <span>
-            <b>{s.withRoles}</b> with open roles
+            <b>{s.needsHuman}</b> companies need a human
           </span>
           <span>
-            <b>{s.byStage.sent + s.byStage.replied + s.byStage.call}</b> in flight
+            <b>{inFlight}</b> in flight
+          </span>
+          <span>
+            <b>{s.byResearch.untriaged}</b> untriaged
           </span>
         </div>
       </div>
 
       <form className="filters" method="get">
-        <input
-          type="search"
-          name="q"
-          placeholder="Search company, location, batch"
-          defaultValue={q || ""}
-        />
-        <select name="stage" defaultValue={stage || ""}>
-          <option value="">Any stage</option>
-          {STAGES.map((st) => (
+        <input type="search" name="q" placeholder="Search person, company, location, batch" defaultValue={q || ""} />
+        <select name="status" defaultValue={status || ""}>
+          <option value="">Any status</option>
+          {LEAD_STATUSES.map((st) => (
             <option key={st} value={st}>
               {st}
             </option>
@@ -55,7 +54,7 @@ export default async function Home({ searchParams }) {
           Has open roles
         </label>
         <button type="submit">Filter</button>
-        {(stage || q || hasRoles) && <Link className="hint" href="/">reset</Link>}
+        {(status || q || hasRoles) && <Link className="hint" href="/">reset</Link>}
       </form>
 
       {rows.length === 0 ? (
@@ -65,37 +64,44 @@ export default async function Home({ searchParams }) {
             Ingest some: <code>node scripts/cli.mjs yc --limit 40</code> then{" "}
             <code>node scripts/cli.mjs enrich --limit 10</code>
           </p>
+          <p>
+            A Lead is a named human. Name one:{" "}
+            <code>node scripts/cli.mjs add-person --company &lt;slug&gt; --name &quot;Priya Sharma&quot;</code>
+          </p>
         </div>
       ) : (
         <table>
           <thead>
             <tr>
+              <th>Person</th>
               <th>Company</th>
               <th>Batch</th>
-              <th>Size</th>
               <th>Location</th>
               <th>Roles</th>
-              <th>Stage</th>
+              <th>Status</th>
               <th>Next touch</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={r.slug}>
+              <tr key={r.leadId}>
                 <td>
-                  <Link className="name" href={`/c/${r.slug}`}>
-                    {r.name}
+                  <Link className="name" href={`/c/${r.company.slug}`}>
+                    {r.person.name || "(unknown person)"}
                   </Link>
-                  {r.oneLiner ? <div className="sub">{r.oneLiner}</div> : null}
+                  {r.person.role ? <div className="sub">{r.person.role}</div> : null}
                 </td>
-                <td className="num">{r.batch || "—"}</td>
-                <td className="num">{r.teamSize ?? "—"}</td>
-                <td className="sub">{(r.location || "—").split(",").slice(0, 2).join(",")}</td>
+                <td>
+                  {r.company.name}
+                  {r.company.oneLiner ? <div className="sub">{r.company.oneLiner}</div> : null}
+                </td>
+                <td className="num">{r.company.batch || "—"}</td>
+                <td className="sub">{(r.company.location || "—").split(",").slice(0, 2).join(",")}</td>
                 <td className="num">
-                  {r.hiring?.roles?.length ? r.hiring.roles.length : r.hiring ? "0" : "—"}
+                  {r.company.hiring?.roles?.length ? r.company.hiring.roles.length : r.company.hiring ? "0" : "—"}
                 </td>
-                <td>{stageChip(r.outreach?.stage || "sourced")}</td>
-                <td className="num">{r.outreach?.nextTouch || "—"}</td>
+                <td>{statusChip(r.status)}</td>
+                <td className="num">{r.nextTouch || "—"}</td>
               </tr>
             ))}
           </tbody>

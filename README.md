@@ -35,7 +35,8 @@ Ingest and enrich from the CLI:
 node scripts/cli.mjs yc --min 5 --max 150 --loc india --limit 40
 node scripts/cli.mjs enrich --limit 10
 node scripts/cli.mjs list --has-roles
-node scripts/cli.mjs set --slug bolna-ai --stage sent --channel email --next 2026-11-02
+node scripts/cli.mjs add-person --company bolna-ai --name "Priya Sharma" --role Founder
+node scripts/cli.mjs set-research --company bolna-ai --status researched
 ```
 
 `enrich --slug <slug>` probes one company. It tries the homepage, `/careers` and
@@ -47,34 +48,52 @@ The same data is available as JSON, which is what an agent should read instead o
 scraping the HTML:
 
 ```
-GET /api/leads?stage=sent&roles=1
-GET /api/leads/<slug>
+GET /api/leads?status=sourced&roles=1
+GET /api/leads/<company-slug>
 ```
 
 `node scripts/cli.mjs list --json` is the CLI equivalent. Dossiers are regenerated as
-Markdown in `data/dossiers/<slug>.md` on every upsert or enrich.
+Markdown in `data/dossiers/<slug>.md` on every write.
 
 ## Data model
 
-`data/db.json`
+`data/db.json`, schema version 2. A v0 file is migrated once on load: every
+Company keeps its facts and gains `researchStatus: "untriaged"`, the v0
+`outreach` map is discarded, and `people` and `leads` start empty.
 
 ```
 companies[slug] = {
   slug, name, website, batch, batchYear, batchSeason,
   teamSize, stage, location, regions, oneLiner, tags,
+  researchStatus: "untriaged" | "researched" | "parked",
   hiring: { ats, boardId, foundOn, roles[], fetchedAt } | null,
-  people: [{ name, role, handle, email, emailVerified, source }],
   sources: [{ source, url, fetchedAt }],
-  lastProbedAt, probeLog, createdAt, updatedAt
+  lastProbedAt, probeLog, notes, createdAt, updatedAt
 }
 
-outreach[slug] = {
-  stage, channel, firstTouch, lastTouch, nextTouch, proofLink, notes
+people[personId] = {
+  personId, companySlug, name, role, handle, email,
+  emailVerified, contactSource, sources[], verifiedAt, createdAt
+}
+
+leads[leadId] = {
+  leadId, companySlug, personId,
+  status, pitch, ask, attempts[], nextTouch, revisitAfter,
+  proofLink, notes, createdAt, updatedAt
 }
 ```
 
-Stages: `sourced → drafted → sent → replied → call → trial → offer | declined |
-revisit | ghosted`.
+`leadId` is `<companySlug>--<personSlug>`, assigned once when the person is
+named. A rename edits the person and leaves the id alone; a repeated name takes
+the next free suffix (`-2`, `-3`). Two people at one Company are two Leads with
+independent statuses and attempts. A contact detail carries its source and fetch
+date, and an unverified email stays unverified.
+
+Research state (the Company machine): `untriaged → researched → parked`, and
+back. Lead status (the Lead machine): `sourced → drafted → sent → replied →
+call → trial → offer`, with side exits to `declined`, `revisit` and `ghosted`
+from any active status. `ghosted` can return to `replied`. Both machines refuse
+illegal moves and name the legal set.
 
 `revisit` is the state that matters most and exists nowhere in a job tracker: the
 founder said "not now". A lead is not rejected, it is timed.
