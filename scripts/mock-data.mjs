@@ -120,6 +120,7 @@ export function buildMockDb({ today = new Date() } = {}) {
         ...(a.note ? { note: a.note } : {}),
       })),
       nextTouch: leadSpec.nextTouch === undefined || leadSpec.nextTouch === null ? null : day(leadSpec.nextTouch),
+      nextTouchOverride: Boolean(leadSpec.nextTouchOverride),
       revisitAfter:
         leadSpec.revisitAfter === undefined || leadSpec.revisitAfter === null ? null : day(leadSpec.revisitAfter),
       proofLink: leadSpec.proofLink ?? null,
@@ -855,6 +856,7 @@ export function buildMockDb({ today = new Date() } = {}) {
       pitch: "Your expense parser is good; the reconciliation layer is the gap.",
       attempts: [{ day: -9, channel: "linkedin", kind: "first", note: "Asked about the reconciliation roadmap." }],
       nextTouch: 7,
+      nextTouchOverride: true,
       notes: "Next date overridden to after the 15th.",
       touched: -9,
     },

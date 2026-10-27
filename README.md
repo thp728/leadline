@@ -49,7 +49,8 @@ The fixture covers what the UI branches on: all three research states and all
 ten Lead statuses, zero to three Leads per company, repeat names that take a
 `-2` id, verified and unverified emails, missing fields, long and Unicode
 strings, stale hiring snapshots, empty boards, no board, attempts from zero to
-three, and next touches and revisits that are overdue, due today and scheduled.
+three, and next touches and revisits that are overdue, due today and scheduled,
+including an overridden next touch the ladder did not set.
 `test/mock.test.mjs` keeps the coverage honest.
 
 Ingest and enrich from the CLI:
@@ -60,6 +61,8 @@ node scripts/cli.mjs enrich --limit 10
 node scripts/cli.mjs list --has-roles
 node scripts/cli.mjs add-person --company bolna-ai --name "Priya Sharma" --role Founder
 node scripts/cli.mjs set-research --company bolna-ai --status researched
+node scripts/cli.mjs log-attempt --lead bolna-ai--priya-sharma --channel email --note "Sent the teardown"
+node scripts/cli.mjs set-next --lead bolna-ai--priya-sharma --date 2026-11-15
 ```
 
 `enrich --slug <slug>` probes one company. It tries the homepage, `/careers` and
@@ -101,8 +104,8 @@ people[personId] = {
 
 leads[leadId] = {
   leadId, companySlug, personId,
-  status, pitch, ask, attempts[], nextTouch, revisitAfter,
-  proofLink, notes, createdAt, updatedAt
+  status, pitch, ask, attempts[], nextTouch, nextTouchOverride,
+  revisitAfter, proofLink, notes, createdAt, updatedAt
 }
 ```
 
@@ -117,6 +120,16 @@ back. Lead status (the Lead machine): `sourced → drafted → sent → replied 
 call → trial → offer`, with side exits to `declined`, `revisit` and `ghosted`
 from any active status. `ghosted` can return to `replied`. Both machines refuse
 illegal moves and name the legal set.
+
+An **Attempt** is `{ date, channel, kind, note? }` with `kind` `first` or
+`followup` and `channel` one of `email`, `linkedin`, `x`, `other`. The ladder
+proposes the next touch as a suggestion the operator confirms or refuses: +4
+days after the first Attempt, +7 after the second, and after a third unanswered
+one it suggests `ghosted` with no next date. A reply, or any status past `sent`,
+stops the ladder. A date set by hand stores `nextTouchOverride: true` and
+survives later Attempts until cleared; `log-attempt` applies the proposed date
+by default and prints it, and `--no-accept` refuses it. A `revisit` refuses to
+exist without a date, and that date is what brings the Lead back into view.
 
 `revisit` is the state that matters most and exists nowhere in a job tracker: the
 founder said "not now". A lead is not rejected, it is timed.

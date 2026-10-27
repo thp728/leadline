@@ -160,6 +160,12 @@ test("dates cover overdue, due today and scheduled, for both touch and revisit",
   const revisits = leads.map((l) => l.revisitAfter).filter(Boolean);
   assert.ok(revisits.some((d) => d < today), "needs a due revisit");
   assert.ok(revisits.some((d) => d > today), "needs a timed revisit");
+
+  assert.ok(leads.some((l) => l.nextTouchOverride), "needs an overridden next touch");
+  assert.ok(
+    leads.some((l) => l.nextTouch && !l.nextTouchOverride),
+    "needs a next touch the ladder would have set",
+  );
 });
 
 test("asks and hiring signals cover the shapes the UI branches on", () => {

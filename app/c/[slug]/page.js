@@ -92,7 +92,9 @@ export default async function CompanyPage({ params }) {
                 {leads.map((l) => (
                   <li key={l.leadId} className="lead">
                     <div>
-                      <b>{l.person?.name || "(unknown person)"}</b>
+                      <b>
+                        <Link href={`/l/${l.leadId}`}>{l.person?.name || "(unknown person)"}</Link>
+                      </b>
                       {l.person?.role ? <span className="sub"> · {l.person.role}</span> : null}
                       <div className="sub">
                         <code>{l.leadId}</code>

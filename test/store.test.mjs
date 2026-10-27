@@ -256,6 +256,192 @@ test("research state moves through the company machine", async (t) => {
   });
 });
 
+test("logging Attempts records them and offers the ladder", async (t) => {
+  const { lead } = store.addPerson("northwind-ai", { name: "Tara Bose", role: "Founder" });
+  store.setLeadStatus(lead.leadId, "drafted");
+  store.setLeadStatus(lead.leadId, "sent");
+
+  await t.test("records an Attempt without applying a date it was not asked to", () => {
+    const res = store.logAttempt(lead.leadId, {
+      date: "2026-10-20",
+      channel: "email",
+      kind: "first",
+      note: "Sent the teardown.",
+      today: "2026-10-27",
+    });
+    assert.equal(res.lead.attempts.length, 1);
+    assert.equal(res.lead.attempts[0].date, "2026-10-20");
+    assert.equal(res.lead.attempts[0].channel, "email");
+    assert.equal(res.lead.attempts[0].kind, "first");
+    assert.equal(res.lead.attempts[0].note, "Sent the teardown.");
+    assert.equal(res.suggestion.nextTouch, "2026-10-24");
+    assert.equal(res.lead.nextTouch, null);
+  });
+
+  await t.test("applies +4 days when the first suggestion is accepted", () => {
+    const res = store.logAttempt(lead.leadId, {
+      date: "2026-10-21",
+      channel: "linkedin",
+      kind: "followup",
+      accept: true,
+      today: "2026-10-27",
+    });
+    assert.equal(res.lead.attempts.length, 2);
+    assert.equal(res.suggestion.days, 7);
+    assert.equal(res.lead.nextTouch, "2026-10-28");
+    assert.equal(res.lead.nextTouchOverride, false);
+  });
+
+  await t.test("keeps an overridden date through later Attempts", () => {
+    store.setNextTouch(lead.leadId, "2026-11-15");
+    const res = store.logAttempt(lead.leadId, {
+      date: "2026-10-25",
+      channel: "email",
+      kind: "followup",
+      accept: true,
+      today: "2026-10-27",
+    });
+    assert.equal(res.suggestion.status, "ghosted");
+    assert.equal(res.lead.nextTouch, "2026-11-15");
+    assert.equal(res.lead.nextTouchOverride, true);
+  });
+
+  await t.test("suggests ghosted after a third unanswered Attempt, applied only on request", () => {
+    const res = store.logAttempt(lead.leadId, {
+      date: "2026-10-26",
+      channel: "email",
+      kind: "followup",
+      accept: true,
+      today: "2026-10-27",
+    });
+    assert.equal(res.suggestion.status, "ghosted");
+    assert.equal(res.suggestion.count, 4);
+    assert.equal(res.lead.status, "sent");
+  });
+
+  await t.test("ghosts the Lead when the suggestion is confirmed", () => {
+    const res = store.logAttempt(lead.leadId, {
+      date: "2026-10-27",
+      channel: "email",
+      kind: "followup",
+      ghost: true,
+      today: "2026-10-27",
+    });
+    assert.equal(res.lead.status, "ghosted");
+    assert.equal(res.lead.nextTouch, null);
+    assert.equal(res.lead.nextTouchOverride, false);
+  });
+
+  await t.test("refuses an unknown Lead or a channel it does not know", () => {
+    assert.throws(() => store.logAttempt("northwind-ai--nobody", { channel: "email" }), /unknown lead: northwind-ai--nobody/);
+    assert.throws(
+      () => store.logAttempt(lead.leadId, { channel: "smoke-signal", kind: "first", today: "2026-10-27" }),
+      /unknown attempt channel: smoke-signal/,
+    );
+  });
+});
+
+test("a reply clears the suggested date", async (t) => {
+  const { lead } = store.addPerson("northwind-ai", { name: "Nisha Rao", role: "CTO" });
+  store.setLeadStatus(lead.leadId, "drafted");
+  store.setLeadStatus(lead.leadId, "sent");
+  store.logAttempt(lead.leadId, {
+    date: "2026-10-20",
+    channel: "email",
+    kind: "first",
+    accept: true,
+    today: "2026-10-27",
+  });
+
+  await t.test("has a date before the reply", () => {
+    assert.equal(store.getLead(lead.leadId).lead.nextTouch, "2026-10-24");
+  });
+
+  await t.test("clears it and moves the status", () => {
+    const moved = store.setLeadStatus(lead.leadId, "replied");
+    assert.equal(moved.status, "replied");
+    assert.equal(moved.nextTouch, null);
+    assert.equal(moved.nextTouchOverride, false);
+  });
+
+  await t.test("stops proposing a date afterwards", () => {
+    const res = store.logAttempt(lead.leadId, {
+      date: "2026-10-26",
+      channel: "linkedin",
+      kind: "followup",
+      accept: true,
+      today: "2026-10-27",
+    });
+    assert.equal(res.suggestion.stopped, true);
+    assert.equal(res.lead.nextTouch, null);
+  });
+});
+
+test("a revisit requires a date and carries it for the due list", async (t) => {
+  const { lead } = store.addPerson("northwind-ai", { name: "Ravi Deshpande", role: "COO" });
+  store.setLeadStatus(lead.leadId, "drafted");
+  store.setLeadStatus(lead.leadId, "sent");
+
+  await t.test("refuses a revisit without a date", () => {
+    assert.throws(() => store.setLeadStatus(lead.leadId, "revisit"), /a revisit needs a date/);
+    assert.equal(store.getLead(lead.leadId).lead.status, "sent");
+  });
+
+  await t.test("stores the date when one is given", () => {
+    const moved = store.setLeadStatus(lead.leadId, "revisit", { revisitAfter: "2026-11-02" });
+    assert.equal(moved.status, "revisit");
+    assert.equal(moved.revisitAfter, "2026-11-02");
+  });
+
+  await t.test("keeps the date on the Lead so the due list can pick it up", () => {
+    const row = store.getLead(lead.leadId);
+    assert.equal(row.lead.revisitAfter, "2026-11-02");
+  });
+
+  await t.test("clears the date when the Lead rejoins the pipeline", () => {
+    const moved = store.setLeadStatus(lead.leadId, "drafted");
+    assert.equal(moved.revisitAfter, null);
+  });
+});
+
+test("the next touch can be overridden and handed back", async (t) => {
+  const { lead } = store.addPerson("acme", { name: "Meera Iyer", role: "Head of Ops" });
+
+  await t.test("sets a manual date and marks it overridden", () => {
+    const next = store.setNextTouch(lead.leadId, "2026-11-20");
+    assert.equal(next.nextTouch, "2026-11-20");
+    assert.equal(next.nextTouchOverride, true);
+  });
+
+  await t.test("clears the date and the override together", () => {
+    const next = store.setNextTouch(lead.leadId, null);
+    assert.equal(next.nextTouch, null);
+    assert.equal(next.nextTouchOverride, false);
+  });
+
+  await t.test("refuses something that is not a day", () => {
+    assert.throws(() => store.setNextTouch(lead.leadId, "next friday"), /next touch must be YYYY-MM-DD/);
+  });
+
+  await t.test("refuses an unknown Lead", () => {
+    assert.throws(() => store.setNextTouch("acme--nobody", "2026-11-20"), /unknown lead: acme--nobody/);
+  });
+});
+
+test("a Lead joins its person and company", async (t) => {
+  const row = store.getLead("acme--priya-sharma");
+
+  await t.test("returns the three records together", () => {
+    assert.equal(row.lead.leadId, "acme--priya-sharma");
+    assert.equal(row.person.name, "Priya Sharma");
+    assert.equal(row.company.slug, "acme");
+  });
+
+  await t.test("returns null for an unknown Lead", () => {
+    assert.equal(store.getLead("acme--nobody"), null);
+  });
+});
+
 test("dossiers list people and their Leads", async (t) => {
   const { lead } = store.addPerson("northwind-ai", {
     name: "Ishan Patel",
@@ -263,6 +449,20 @@ test("dossiers list people and their Leads", async (t) => {
     contactSource: "https://northwind.example/team",
   });
   store.setLeadStatus(lead.leadId, "drafted");
+  store.logAttempt(lead.leadId, {
+    date: "2026-10-20",
+    channel: "email",
+    kind: "first",
+    note: "Sent the teardown.",
+    today: "2026-10-27",
+  });
+  store.logAttempt(lead.leadId, {
+    date: "2026-10-24",
+    channel: "email",
+    kind: "followup",
+    note: "Followed up with the deck.",
+    today: "2026-10-27",
+  });
 
   const dossier = fs.readFileSync(path.join(root, "dossiers", "northwind-ai.md"), "utf8");
 
@@ -279,6 +479,14 @@ test("dossiers list people and their Leads", async (t) => {
   await t.test("shows the company research state", () => {
     assert.match(dossier, /Research/);
     assert.match(dossier, /untriaged/);
+  });
+
+  await t.test("lists Attempts newest first with their note", () => {
+    assert.match(dossier, /Attempts \(2, newest first\)/);
+    assert.ok(
+      dossier.indexOf("Followed up with the deck.") < dossier.indexOf("Sent the teardown."),
+      "the newest Attempt should come first",
+    );
   });
 });
 

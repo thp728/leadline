@@ -8,6 +8,8 @@
  *   node scripts/cli.mjs list --status sourced --json
  *   node scripts/cli.mjs add-person --company bolna-ai --name "Priya Sharma" --role Founder
  *   node scripts/cli.mjs set-research --company bolna-ai --status researched
+ *   node scripts/cli.mjs log-attempt --lead bolna-ai--priya-sharma --channel email --note "Sent the teardown"
+ *   node scripts/cli.mjs set-next --lead bolna-ai--priya-sharma --date 2026-11-15
  *   node scripts/cli.mjs export
  */
 
@@ -17,6 +19,8 @@ import {
   listLeads,
   addPerson,
   updatePerson,
+  logAttempt,
+  setNextTouch,
   setResearchStatus,
   stats,
   loadDb,
@@ -148,6 +152,45 @@ try {
       throw new Error(`status must be one of: ${RESEARCH_STATUSES.join(", ")}`);
     }
     console.log(JSON.stringify(setResearchStatus(String(f.company), String(f.status)), null, 2));
+  } else if (cmd === "log-attempt") {
+    if (!f.lead) throw new Error("--lead is required (e.g. bolna-ai--priya-sharma)");
+    const leadId = String(f.lead);
+    const res = logAttempt(leadId, {
+      date: f.date,
+      channel: f.channel,
+      kind: f.kind,
+      note: f.note,
+      // The ladder's date is applied unless refused; a ghosted status always
+      // needs --ghost, because that is a decision, not arithmetic.
+      accept: !f["no-accept"] && !f["no-next"],
+      ghost: Boolean(f.ghost),
+    });
+
+    let lead = res.lead;
+    if (f.next) lead = setNextTouch(leadId, String(f.next));
+    if (f["no-next"]) lead = setNextTouch(leadId, null);
+
+    if (f.json) {
+      console.log(JSON.stringify({ attempt: res.attempt, suggestion: res.suggestion, lead }, null, 2));
+    } else {
+      const a = res.attempt;
+      console.log(`logged ${a.date} · ${a.channel} · ${a.kind}${a.note ? ` — ${a.note}` : ""}`);
+      if (res.suggestion.stopped) {
+        console.log("ladder stopped (replied or past sent): set the next date yourself");
+      } else if (res.suggestion.status === "ghosted") {
+        console.log(`${res.suggestion.count} unanswered Attempts: suggested ghosted, no next date`);
+      } else if (res.suggestion.nextTouch) {
+        const applied = res.lead.nextTouch === res.suggestion.nextTouch ? " — applied" : " — not applied";
+        console.log(`suggested next touch ${res.suggestion.nextTouch} (+${res.suggestion.days} days)${applied}`);
+      }
+      console.log(
+        `next touch: ${lead.nextTouch || "none"}${lead.nextTouchOverride ? " (overridden)" : ""} · status: ${lead.status}`,
+      );
+    }
+  } else if (cmd === "set-next") {
+    if (!f.lead) throw new Error("--lead is required (e.g. bolna-ai--priya-sharma)");
+    if (!f.clear && !f.date) throw new Error("--date is required (or --clear to hand the date back)");
+    console.log(JSON.stringify(setNextTouch(String(f.lead), f.clear ? null : String(f.date)), null, 2));
   } else if (cmd === "dossiers") {
     writeAllDossiers();
     console.log("dossiers rewritten");
@@ -165,6 +208,9 @@ try {
   add-person   --company <slug> --name "Priya Sharma" [--role Founder] [--handle @priya] [--email ...] [--source url]
   update-person --lead <leadId> [--name ...] [--role ...] [--handle ...] [--email ...] [--source url]
   set-research --company <slug> --status ${RESEARCH_STATUSES.join("|")}
+  log-attempt  --lead <leadId> --channel email|linkedin|x|other [--kind first|followup] [--date YYYY-MM-DD]
+               [--note "..."] [--no-accept] [--next YYYY-MM-DD | --no-next] [--ghost] [--json]
+  set-next     --lead <leadId> (--date YYYY-MM-DD | --clear)
   stats
   dossiers
   export

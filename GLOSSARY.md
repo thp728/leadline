@@ -32,6 +32,12 @@ One try at reaching a Lead: a DM, an email, a follow-up. Counted when deciding
 whether someone has gone cold.
 _Avoid_: Touch, send, ping, contact (as a noun), interaction
 
+**Ladder**:
+The fixed proposal for the next Attempt: +4 days, then +7, then suggest
+`ghosted`. A suggestion the operator confirms, refuses or overrides — never a
+silent write.
+_Avoid_: Sequence, cadence, drip, automation
+
 **Brief**:
 The remembered case for writing to one Lead — who they are, why now, why you,
 what you are offering. Read by the writer, never by the Lead.

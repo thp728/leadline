@@ -1,15 +1,49 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { addPerson, setLeadStatus, setResearchStatus } from "../lib/store.mjs";
+import { redirect } from "next/navigation";
+import { addPerson, getLead, logAttempt, setLeadStatus, setNextTouch, setResearchStatus } from "../lib/store.mjs";
 import { companySlugOf } from "../lib/core.mjs";
 
 /**
- * The three things the browser can change: name a human (which creates a Lead),
- * move that Lead's status, and move the Company's research state. The status
- * machines are enforced in the domain core; the forms only offer legal moves,
- * so a refusal here means a stale tab, not a user mistake.
+ * The things the browser can change: name a human (which creates a Lead), move
+ * that Lead's status, time a revisit, override the next touch, log an Attempt,
+ * record a reply, and move the Company's research state.
+ *
+ * The machines and the ladder are enforced in the domain core. Forms only offer
+ * legal moves, so a refusal here means a stale tab or a hand-made request; the
+ * Lead page shows the message rather than failing silently.
  */
+
+/** Revalidate every view of one Lead and report whether it still exists. */
+function refresh(leadId) {
+  const row = getLead(leadId);
+  revalidatePath("/");
+  revalidatePath(`/l/${leadId}`);
+  if (row) revalidatePath(`/c/${row.lead.companySlug}`);
+  return row;
+}
+
+function backWith(backTo, failure) {
+  redirect(failure ? `${backTo}?error=${encodeURIComponent(failure)}` : backTo);
+}
+
+/** Run one Lead action, refresh its views, and surface a refusal on the page. */
+async function runOnLead(formData, run) {
+  const leadId = String(formData.get("leadId") || "");
+  if (!leadId) return;
+
+  const backTo = `/l/${leadId}`;
+  let failure = null;
+  try {
+    run(leadId);
+  } catch (err) {
+    failure = err.message;
+  }
+
+  if (!refresh(leadId)) return;
+  backWith(backTo, failure);
+}
 
 export async function savePerson(formData) {
   const company = String(formData.get("company") || "");
@@ -33,16 +67,48 @@ export async function saveLeadStatus(formData) {
   const status = String(formData.get("status") || "");
   if (!leadId || !status) return;
 
-  let companySlug = null;
+  const revisitAfter = String(formData.get("revisitAfter") || "").trim() || undefined;
+  const backTo = String(formData.get("back") || "");
+
+  let failure = null;
   try {
-    companySlug = setLeadStatus(leadId, status).companySlug;
-  } catch {
-    // Stale form: the page below shows the current status and its legal moves.
-    companySlug = companySlugOf(leadId);
+    setLeadStatus(leadId, status, { revisitAfter });
+  } catch (err) {
+    failure = err.message;
   }
 
-  revalidatePath("/");
-  if (companySlug) revalidatePath(`/c/${companySlug}`);
+  const row = refresh(leadId);
+  if (!row) return;
+  if (backTo) backWith(backTo, failure);
+
+  // A stale form on the Company page: the page below shows the current status
+  // and its legal moves, so there is nothing more to say.
+  revalidatePath(`/c/${companySlugOf(leadId)}`);
+}
+
+/** Log the Attempt the operator just made, with the suggestion they confirmed. */
+export async function saveAttempt(formData) {
+  await runOnLead(formData, (leadId) => {
+    logAttempt(leadId, {
+      date: String(formData.get("date") || "").trim() || undefined,
+      channel: String(formData.get("channel") || ""),
+      kind: String(formData.get("kind") || "").trim() || undefined,
+      note: String(formData.get("note") || ""),
+      accept: formData.get("accept") === "1",
+    });
+  });
+}
+
+/** They came back: move to replied, which clears the suggested date. */
+export async function saveReply(formData) {
+  await runOnLead(formData, (leadId) => setLeadStatus(leadId, "replied"));
+}
+
+/** Override the next touch for one Lead, or clear it to hand the date back. */
+export async function saveNextTouch(formData) {
+  await runOnLead(formData, (leadId) =>
+    setNextTouch(leadId, String(formData.get("date") || "").trim() || null),
+  );
 }
 
 export async function saveResearchStatus(formData) {

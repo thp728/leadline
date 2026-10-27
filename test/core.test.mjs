@@ -15,6 +15,19 @@ import {
   assertResearchTransition,
   legalLeadTransitions,
   assertLeadTransition,
+  applyLeadTransition,
+  ATTEMPT_CHANNELS,
+  ATTEMPT_KINDS,
+  LADDER_DAYS,
+  ATTEMPT_CAP,
+  addDays,
+  isIsoDate,
+  createAttempt,
+  sortAttempts,
+  attemptsNewestFirst,
+  defaultAttemptKind,
+  ladderSuggestion,
+  planAttempt,
   migrateDb,
   selectLeads,
 } from "../lib/core.mjs";
@@ -394,6 +407,312 @@ test("research status machine", async (t) => {
       /unknown research status: done \(known: untriaged, researched, parked\)/,
     );
     assert.throws(() => assertResearchTransition("lead", "parked"), /unknown research status: lead/);
+  });
+});
+
+const attempt = (date, kind = "first", channel = "email", note) => ({
+  date,
+  kind,
+  channel,
+  ...(note ? { note } : {}),
+});
+
+test("the ladder", async (t) => {
+  await t.test("names the cadence as constants, not configuration", () => {
+    assert.deepEqual(LADDER_DAYS, [4, 7]);
+    assert.equal(ATTEMPT_CAP, 3);
+  });
+
+  await t.test("suggests nothing before the first Attempt", () => {
+    const s = ladderSuggestion({ status: "sourced", attempts: [] });
+    assert.equal(s.stopped, false);
+    assert.equal(s.count, 0);
+    assert.equal(s.nextTouch, null);
+    assert.equal(s.status, null);
+  });
+
+  const cases = [
+    {
+      name: "suggests +4 days after the first Attempt",
+      attempts: [attempt("2026-10-20")],
+      nextTouch: "2026-10-24",
+      days: 4,
+      status: null,
+    },
+    {
+      name: "suggests +7 days after the second Attempt",
+      attempts: [attempt("2026-10-20"), attempt("2026-10-24", "followup")],
+      nextTouch: "2026-10-31",
+      days: 7,
+      status: null,
+    },
+    {
+      name: "suggests ghosted after the third Attempt and sets no next date",
+      attempts: [attempt("2026-10-20"), attempt("2026-10-24", "followup"), attempt("2026-10-31", "followup")],
+      nextTouch: null,
+      days: null,
+      status: "ghosted",
+    },
+    {
+      name: "keeps suggesting ghosted after a fourth Attempt",
+      attempts: [
+        attempt("2026-10-20"),
+        attempt("2026-10-24", "followup"),
+        attempt("2026-10-31", "followup"),
+        attempt("2026-11-04", "followup"),
+      ],
+      nextTouch: null,
+      days: null,
+      status: "ghosted",
+    },
+  ];
+
+  for (const c of cases) {
+    await t.test(c.name, () => {
+      const s = ladderSuggestion({ status: "sent", attempts: c.attempts });
+      assert.equal(s.stopped, false);
+      assert.equal(s.nextTouch, c.nextTouch);
+      assert.equal(s.days, c.days);
+      assert.equal(s.status, c.status);
+      assert.equal(s.count, c.attempts.length);
+    });
+  }
+
+  await t.test("counts from the latest Attempt, not the first", () => {
+    const s = ladderSuggestion({ status: "sent", attempts: [attempt("2026-09-01"), attempt("2026-10-20", "followup")] });
+    assert.equal(s.nextTouch, "2026-10-27");
+  });
+
+  await t.test("stops after a reply or any status past sent", () => {
+    for (const status of ["replied", "call", "trial", "offer", "declined", "ghosted", "revisit"]) {
+      const s = ladderSuggestion({ status, attempts: [attempt("2026-10-20")] });
+      assert.equal(s.stopped, true, `${status} should stop the ladder`);
+      assert.equal(s.nextTouch, null);
+      assert.equal(s.status, null);
+    }
+  });
+
+  await t.test("keeps laddering while nothing has come back", () => {
+    for (const status of ["sourced", "drafted", "sent"]) {
+      const s = ladderSuggestion({ status, attempts: [attempt("2026-10-20")] });
+      assert.equal(s.stopped, false, `${status} is still on the ladder`);
+      assert.equal(s.nextTouch, "2026-10-24");
+    }
+  });
+});
+
+test("day arithmetic", async (t) => {
+  await t.test("adds days within a month", () => {
+    assert.equal(addDays("2026-10-20", 4), "2026-10-24");
+    assert.equal(addDays("2026-10-24", 7), "2026-10-31");
+  });
+
+  await t.test("crosses a month and a year boundary", () => {
+    assert.equal(addDays("2026-10-30", 4), "2026-11-03");
+    assert.equal(addDays("2026-12-30", 7), "2027-01-06");
+  });
+
+  await t.test("refuses a day that does not exist", () => {
+    assert.equal(isIsoDate("2026-02-30"), false);
+    assert.throws(() => addDays("2026-02-30", 1), /not a date: 2026-02-30/);
+    assert.equal(isIsoDate("2026-02-28"), true);
+    assert.equal(isIsoDate("2026-2-8"), false);
+    assert.equal(isIsoDate("2026-10-20T00:00:00.000Z"), false);
+  });
+});
+
+test("recording an Attempt", async (t) => {
+  await t.test("keeps a day, a channel, a kind and an optional one-line note", () => {
+    assert.deepEqual(
+      createAttempt(
+        { date: "2026-10-20", channel: "email", kind: "first", note: "  Sent the teardown.\nAsked who owns it.  " },
+        { today: "2026-10-27" },
+      ),
+      { date: "2026-10-20", channel: "email", kind: "first", note: "Sent the teardown. Asked who owns it." },
+    );
+  });
+
+  await t.test("defaults the date to today", () => {
+    assert.equal(createAttempt({ channel: "x", kind: "first" }, { today: "2026-10-27" }).date, "2026-10-27");
+  });
+
+  await t.test("omits an empty note rather than storing a blank", () => {
+    const logged = createAttempt({ channel: "email", kind: "first", note: "   " }, { today: "2026-10-27" });
+    assert.equal("note" in logged, false);
+  });
+
+  await t.test("defaults the kind from the history", () => {
+    assert.equal(defaultAttemptKind([]), "first");
+    assert.equal(defaultAttemptKind([attempt("2026-10-20")]), "followup");
+  });
+
+  await t.test("refuses an Attempt dated in the future", () => {
+    assert.throws(
+      () => createAttempt({ date: "2026-10-28", channel: "email", kind: "first" }, { today: "2026-10-27" }),
+      /attempt date cannot be in the future: 2026-10-28/,
+    );
+  });
+
+  await t.test("refuses a kind it does not know and names the set", () => {
+    assert.deepEqual(ATTEMPT_KINDS, ["first", "followup"]);
+    assert.deepEqual(ATTEMPT_CHANNELS, ["email", "linkedin", "x", "other"]);
+    assert.throws(
+      () => createAttempt({ channel: "email", kind: "cold" }, { today: "2026-10-27" }),
+      /unknown attempt kind: cold \(known: first, followup\)/,
+    );
+  });
+
+  await t.test("refuses a channel it does not know and names the set", () => {
+    assert.throws(
+      () => createAttempt({ channel: "carrier-pigeon", kind: "first" }, { today: "2026-10-27" }),
+      /unknown attempt channel: carrier-pigeon \(known: email, linkedin, x, other\)/,
+    );
+    assert.throws(
+      () => createAttempt({ kind: "first" }, { today: "2026-10-27" }),
+      /unknown attempt channel: \(none\)/,
+    );
+  });
+});
+
+test("Attempt history order", async (t) => {
+  const attempts = [attempt("2026-10-24", "followup"), attempt("2026-10-20"), attempt("2026-10-20", "followup")];
+  const namer = (a) => `${a.date} ${a.kind}`;
+
+  await t.test("stores the oldest Attempt first", () => {
+    assert.deepEqual(sortAttempts(attempts).map(namer), [
+      "2026-10-20 first",
+      "2026-10-20 followup",
+      "2026-10-24 followup",
+    ]);
+  });
+
+  await t.test("renders the newest Attempt first, including same-day ones", () => {
+    assert.deepEqual(attemptsNewestFirst(attempts).map(namer), [
+      "2026-10-24 followup",
+      "2026-10-20 followup",
+      "2026-10-20 first",
+    ]);
+  });
+
+  await t.test("leaves the input untouched", () => {
+    const before = JSON.stringify(attempts);
+    sortAttempts(attempts);
+    attemptsNewestFirst(attempts);
+    assert.equal(JSON.stringify(attempts), before);
+  });
+});
+
+test("Lead dates follow the Attempt and the status", async (t) => {
+  const sent = {
+    status: "sent",
+    attempts: [],
+    nextTouch: "2026-11-01",
+    nextTouchOverride: false,
+    revisitAfter: null,
+  };
+
+  await t.test("a reply clears the suggested next date and any override", () => {
+    const next = applyLeadTransition({ ...sent, nextTouchOverride: true }, "replied");
+    assert.equal(next.status, "replied");
+    assert.equal(next.nextTouch, null);
+    assert.equal(next.nextTouchOverride, false);
+  });
+
+  await t.test("ghosting or declining clears the next date", () => {
+    for (const status of ["ghosted", "declined"]) {
+      const next = applyLeadTransition(sent, status);
+      assert.equal(next.nextTouch, null, `${status} should clear the date`);
+      assert.equal(next.nextTouchOverride, false);
+    }
+  });
+
+  await t.test("a revisit needs a date", () => {
+    assert.throws(() => applyLeadTransition(sent, "revisit"), /a revisit needs a date/);
+    assert.throws(
+      () => applyLeadTransition(sent, "revisit", { revisitAfter: "next week" }),
+      /revisit date must be YYYY-MM-DD, got: next week/,
+    );
+  });
+
+  await t.test("a timed revisit carries its date and no touch date", () => {
+    const next = applyLeadTransition(sent, "revisit", { revisitAfter: "2026-12-01" });
+    assert.equal(next.status, "revisit");
+    assert.equal(next.revisitAfter, "2026-12-01");
+    assert.equal(next.nextTouch, null);
+    assert.equal(next.nextTouchOverride, false);
+  });
+
+  await t.test("changing the revisit date keeps it timed", () => {
+    const revisit = { ...sent, status: "revisit", revisitAfter: "2026-12-01", nextTouch: null };
+    assert.equal(applyLeadTransition(revisit, "revisit", { revisitAfter: "2027-01-05" }).revisitAfter, "2027-01-05");
+    assert.equal(applyLeadTransition(revisit, "revisit").revisitAfter, "2026-12-01");
+  });
+
+  await t.test("leaving revisit clears the revisit date", () => {
+    const revisit = { ...sent, status: "revisit", revisitAfter: "2026-12-01", nextTouch: null };
+    assert.equal(applyLeadTransition(revisit, "drafted").revisitAfter, null);
+    assert.equal(applyLeadTransition(revisit, "sent").revisitAfter, null);
+  });
+
+  await t.test("refuses an illegal jump and names the legal set", () => {
+    assert.throws(
+      () => applyLeadTransition({ status: "sourced" }, "replied"),
+      /illegal lead status transition: sourced → replied \(legal from sourced: drafted, declined, ghosted, revisit\)/,
+    );
+  });
+});
+
+test("planning an Attempt", async (t) => {
+  const sent = { status: "sent", attempts: [], nextTouch: null, nextTouchOverride: false };
+  const first = { date: "2026-10-20", channel: "email", kind: "first" };
+  const at = { today: "2026-10-27" };
+
+  await t.test("suggests a date without applying it", () => {
+    const plan = planAttempt(sent, first, at);
+    assert.equal(plan.suggestion.nextTouch, "2026-10-24");
+    assert.equal(plan.nextTouch, null);
+    assert.equal(plan.accepted, false);
+  });
+
+  await t.test("applies the suggestion only when accepted", () => {
+    const plan = planAttempt(sent, first, { ...at, accept: true });
+    assert.equal(plan.accepted, true);
+    assert.equal(plan.nextTouch, "2026-10-24");
+    assert.equal(plan.nextTouchOverride, false);
+  });
+
+  await t.test("leaves an overridden date alone even when accepted", () => {
+    const overridden = { ...sent, nextTouch: "2026-11-15", nextTouchOverride: true };
+    const plan = planAttempt(overridden, first, { ...at, accept: true });
+    assert.equal(plan.accepted, false);
+    assert.equal(plan.nextTouch, "2026-11-15");
+    assert.equal(plan.nextTouchOverride, true);
+  });
+
+  await t.test("leaves the date alone when the ladder is stopped", () => {
+    const replied = { ...sent, status: "replied", nextTouch: "2026-11-01" };
+    const plan = planAttempt(replied, first, { ...at, accept: true });
+    assert.equal(plan.accepted, false);
+    assert.equal(plan.nextTouch, "2026-11-01");
+  });
+
+  await t.test("keeps a legacy date whose override flag predates the field", () => {
+    const legacy = { status: "sent", attempts: [], nextTouch: "2026-11-15" };
+    const plan = planAttempt(legacy, first, { ...at, accept: true });
+    assert.equal(plan.nextTouch, "2026-11-15");
+    assert.equal(plan.nextTouchOverride, true);
+  });
+
+  await t.test("clears the date when the third Attempt exhausts the ladder", () => {
+    const exhausted = {
+      ...sent,
+      attempts: [attempt("2026-10-01"), attempt("2026-10-05", "followup")],
+      nextTouch: "2026-10-12",
+    };
+    const plan = planAttempt(exhausted, { date: "2026-10-09", channel: "email", kind: "followup" }, { ...at, accept: true });
+    assert.equal(plan.suggestion.status, "ghosted");
+    assert.equal(plan.nextTouch, null);
+    assert.equal(plan.attempts.length, 3);
   });
 });
 
