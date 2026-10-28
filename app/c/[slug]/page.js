@@ -18,7 +18,7 @@ export default async function CompanyPage({ params }) {
   return (
     <main className="wrap">
       <Link className="back" href="/">
-        ← all leads
+        ← today
       </Link>
 
       <div className="title">

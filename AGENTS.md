@@ -34,9 +34,10 @@ agent should do differently from a generic codebase.
 | Task | File |
 |---|---|
 | New source (HN, VC portfolio, funding) | `lib/ingest.mjs` + a subcommand in `scripts/cli.mjs` |
-| Decisions: slug, domain, dedupe, lead ids, both status machines, the ladder, revisit dating, migration, list filters | `lib/core.mjs` + `test/core.test.mjs` |
+| Decisions: slug, domain, dedupe, lead ids, both status machines, the ladder, revisit dating, migration, list filters, morning buckets | `lib/core.mjs` + `test/core.test.mjs` |
 | JSON persistence / dossiers / one-time migration write-back | `lib/store.mjs` + `test/store.test.mjs` |
-| Table, filters, detail view | `app/page.js`, `app/c/[slug]/page.js` |
+| Morning screen | `app/page.js` |
+| Table, filters, detail view | `app/leads/page.js`, `app/c/[slug]/page.js` |
 | Lead page: Attempts, ladder proposals, next-touch override, revisit date | `app/l/[leadId]/page.js` + `app/actions.js` |
 | Name-a-human, Lead status, research state forms | `app/c/[slug]/page.js` + `app/actions.js` |
 | Styling | `app/globals.css` (no UI library, no Tailwind) |

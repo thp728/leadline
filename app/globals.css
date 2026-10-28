@@ -3,6 +3,7 @@
   --panel: #14161a;
   --panel-2: #191c21;
   --line: #23272e;
+  --hover: #171a1f;
   --ink: #e7e8ea;
   --muted: #8d929b;
   --dim: #636973;
@@ -163,7 +164,7 @@ td {
 }
 
 tbody tr:hover {
-  background: #171a1f;
+  background: var(--hover);
 }
 
 tbody tr:last-child td {
@@ -406,4 +407,129 @@ code {
 .attempts .what {
   font-size: 13px;
   margin-top: 2px;
+}
+
+/* The morning screen: one card per bucket, in priority order. */
+
+.morning {
+  margin-bottom: 18px;
+}
+
+.morning h1 {
+  font-size: 30px;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.morning .hint {
+  margin: 6px 0 0;
+  max-width: 62ch;
+}
+
+.buckets {
+  display: grid;
+  gap: 16px;
+}
+
+.bucket {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.bucket-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.bucket-head h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.bucket-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+
+.bucket-note {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.bucket-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bucket-rows li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.bucket-rows li:last-child {
+  border-bottom: none;
+}
+
+.bucket-rows li:hover {
+  background: var(--hover);
+}
+
+.bucket-rows .who {
+  min-width: 0;
+}
+
+.bucket-rows .who .name {
+  font-weight: 500;
+}
+
+.bucket-rows .when {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.bucket-empty {
+  margin: 0;
+  padding: 12px 16px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.onboard {
+  margin-bottom: 16px;
+}
+
+@media (max-width: 640px) {
+  .bucket-rows li {
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .bucket-note {
+    display: none;
+  }
 }

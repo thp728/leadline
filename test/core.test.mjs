@@ -30,6 +30,9 @@ import {
   planAttempt,
   migrateDb,
   selectLeads,
+  daysBetween,
+  isoDay,
+  morningBuckets,
 } from "../lib/core.mjs";
 
 /**
@@ -898,5 +901,277 @@ test("Leads list filtering", async (t) => {
   await t.test("returns an empty list for an empty corpus", () => {
     assert.deepEqual(selectLeads({ companies: {}, people: {}, leads: {} }), []);
     assert.deepEqual(selectLeads(), []);
+  });
+});
+
+test("day counts between calendar days", async (t) => {
+  const cases = [
+    { name: "counts the same day as zero", from: "2026-10-28", to: "2026-10-28", expected: 0 },
+    { name: "counts yesterday to today as one", from: "2026-10-27", to: "2026-10-28", expected: 1 },
+    { name: "counts a future day as negative", from: "2026-10-28", to: "2026-10-27", expected: -1 },
+    { name: "crosses a month boundary", from: "2026-10-28", to: "2026-11-04", expected: 7 },
+    { name: "crosses a year boundary", from: "2026-12-30", to: "2027-01-06", expected: 7 },
+    { name: "counts the leap day", from: "2028-02-28", to: "2028-03-01", expected: 2 },
+    { name: "is unmoved by a daylight-boundary day", from: "2026-03-07", to: "2026-03-09", expected: 2 },
+  ];
+
+  for (const c of cases) {
+    await t.test(c.name, () => {
+      assert.equal(daysBetween(c.from, c.to), c.expected);
+    });
+  }
+
+  await t.test("refuses a day that is not a calendar date", () => {
+    assert.throws(() => daysBetween("2026-10-28", "tomorrow"), /not a date: tomorrow/);
+    assert.throws(() => daysBetween("2026-02-30", "2026-03-01"), /not a date: 2026-02-30/);
+  });
+});
+
+test("the morning screen", async (t) => {
+  const today = "2026-10-28";
+  const at = { today };
+
+  const oneLead = (companySlug, name, spec) => {
+    const l = lead(companySlug, name, spec);
+    return {
+      companies: { [companySlug]: company({ slug: companySlug, name: "Acme", batchYear: 2025 }) },
+      people: { [l.leadId]: person(companySlug, name) },
+      leads: { [l.leadId]: l },
+    };
+  };
+
+  const bucketIdFor = (corpus) => {
+    const { buckets } = morningBuckets(corpus, at);
+    const [only] = buckets.flatMap((b) => b.rows.filter((r) => r.leadId)).map((r) => r.leadId);
+    return buckets.find((b) => b.rows.some((r) => r.leadId === only))?.id ?? null;
+  };
+
+  await t.test("names the four buckets in priority order", () => {
+    const { buckets } = morningBuckets({ companies: {}, people: {}, leads: {} }, at);
+    assert.deepEqual(buckets.map((b) => b.id), ["due", "waiting", "research", "backlog"]);
+    assert.deepEqual(buckets.map((b) => b.label), ["Due", "Waiting", "No human yet", "Backlog"]);
+  });
+
+  const cases = [
+    { name: "sent with a next touch of today is due", spec: { status: "sent", nextTouch: today }, expected: "due" },
+    {
+      name: "sent with a next touch in the past is due",
+      spec: { status: "sent", nextTouch: "2026-10-20" },
+      expected: "due",
+    },
+    {
+      name: "sent with a next touch tomorrow is not due",
+      spec: { status: "sent", nextTouch: "2026-10-29" },
+      expected: null,
+    },
+    { name: "sent with no next date is waiting", spec: { status: "sent" }, expected: "waiting" },
+    {
+      name: "drafted with an arrived date is due",
+      spec: { status: "drafted", nextTouch: "2026-10-20" },
+      expected: "due",
+    },
+    {
+      name: "a live offer with an arrived date is due",
+      spec: { status: "offer", nextTouch: "2026-10-20" },
+      expected: "due",
+    },
+    {
+      name: "a revisit whose date arrived is due",
+      spec: { status: "revisit", revisitAfter: "2026-10-20" },
+      expected: "due",
+    },
+    {
+      name: "a revisit dated today is due",
+      spec: { status: "revisit", revisitAfter: today },
+      expected: "due",
+    },
+    {
+      name: "a revisit dated tomorrow is not due",
+      spec: { status: "revisit", revisitAfter: "2026-10-29" },
+      expected: null,
+    },
+    {
+      name: "a ghosted Lead is not due even with a date",
+      spec: { status: "ghosted", nextTouch: "2026-10-01" },
+      expected: null,
+    },
+    {
+      name: "a declined Lead is not due even with a date",
+      spec: { status: "declined", nextTouch: "2026-10-01" },
+      expected: null,
+    },
+    { name: "sourced with nothing sent is backlog", spec: { status: "sourced" }, expected: "backlog" },
+    {
+      name: "sourced with an arrived date is due, not backlog",
+      spec: { status: "sourced", nextTouch: "2026-10-01" },
+      expected: "due",
+    },
+    {
+      name: "drafted with a future date is in no bucket",
+      spec: { status: "drafted", nextTouch: "2026-11-01" },
+      expected: null,
+    },
+    { name: "replied with no date is in no bucket", spec: { status: "replied" }, expected: null },
+  ];
+
+  for (const c of cases) {
+    await t.test(c.name, () => {
+      assert.equal(bucketIdFor(oneLead("acme", "Case Person", c.spec)), c.expected);
+    });
+  }
+
+  const planted = () => {
+    const companies = {
+      inkwell: company({ slug: "inkwell", name: "Inkwell", batch: "W26", batchYear: 2026, researchStatus: "untriaged" }),
+      northwind: company({ slug: "northwind", name: "Northwind", batch: "S24", batchYear: 2024, researchStatus: "untriaged" }),
+      bright: company({ slug: "bright", name: "Bright", batch: "S23", batchYear: 2023, researchStatus: "researched" }),
+      zephyr: company({ slug: "zephyr", name: "Zephyr", batch: "S21", batchYear: 2021, researchStatus: "parked" }),
+      delta: company({ slug: "delta", name: "Delta", batch: "S22", batchYear: 2022, researchStatus: "researched" }),
+      quill: company({ slug: "quill", name: "Quill", batch: "W22", batchYear: 2022, researchStatus: "researched" }),
+    };
+    const names = {
+      "delta--overdue": "Delta Overdue",
+      "delta--revisit": "Delta Revisit",
+      "delta--today": "Delta Today",
+      "delta--sourced": "Delta Sourced",
+      "quill--ana": "Quill Ana",
+      "quill--bo": "Quill Bo",
+      "quill--future": "Quill Future",
+      "quill--sourced": "Quill Sourced",
+      "acme--sourced": "Acme Sourced",
+    };
+    const people = {};
+    for (const [id, name] of Object.entries(names)) {
+      const [companySlug, personSlug] = id.split("--");
+      people[id] = { ...person(companySlug, name), personId: id };
+    }
+
+    const leads = {
+      "delta--overdue": { ...lead("delta", "Delta Overdue", { status: "sent", nextTouch: "2026-10-20" }), leadId: "delta--overdue", personId: "delta--overdue" },
+      "delta--revisit": { ...lead("delta", "Delta Revisit", { status: "revisit", revisitAfter: "2026-10-27" }), leadId: "delta--revisit", personId: "delta--revisit" },
+      "delta--today": { ...lead("delta", "Delta Today", { status: "sent", nextTouch: today }), leadId: "delta--today", personId: "delta--today" },
+      "delta--sourced": { ...lead("delta", "Delta Sourced"), leadId: "delta--sourced", personId: "delta--sourced" },
+      "quill--ana": {
+        ...lead("quill", "Quill Ana", { status: "sent", attempts: [attempt("2026-10-16")] }),
+        leadId: "quill--ana",
+        personId: "quill--ana",
+      },
+      "quill--bo": {
+        ...lead("quill", "Quill Bo", { status: "sent", attempts: [attempt("2026-10-25")] }),
+        leadId: "quill--bo",
+        personId: "quill--bo",
+      },
+      "quill--future": {
+        ...lead("quill", "Quill Future", { status: "drafted", nextTouch: "2026-11-01" }),
+        leadId: "quill--future",
+        personId: "quill--future",
+      },
+      "quill--sourced": {
+        ...lead("quill", "Quill Sourced"),
+        leadId: "quill--sourced",
+        personId: "quill--sourced",
+      },
+      "acme--sourced": {
+        ...lead("acme", "Acme Sourced"),
+        leadId: "acme--sourced",
+        personId: "acme--sourced",
+        companySlug: "acme",
+      },
+    };
+    companies.acme = company({ slug: "acme", name: "Acme", batch: "W23", batchYear: 2023, researchStatus: "researched" });
+
+    return { companies, people, leads };
+  };
+
+  await t.test("puts the most overdue Lead first", () => {
+    const { buckets } = morningBuckets(planted(), at);
+    const due = buckets.find((b) => b.id === "due");
+    assert.deepEqual(due.rows.map((r) => r.leadId), ["delta--overdue", "delta--revisit", "delta--today"]);
+  });
+
+  await t.test("puts the Lead waiting longest first", () => {
+    const { buckets } = morningBuckets(planted(), at);
+    const waiting = buckets.find((b) => b.id === "waiting");
+    assert.deepEqual(waiting.rows.map((r) => r.leadId), ["quill--ana", "quill--bo"]);
+  });
+
+  await t.test("queues research untriaged first and newest batch first", () => {
+    const { buckets } = morningBuckets(planted(), at);
+    const research = buckets.find((b) => b.id === "research");
+    assert.deepEqual(research.rows.map((r) => r.slug), ["inkwell", "northwind", "bright", "zephyr"]);
+  });
+
+  await t.test("lists the backlog newest batch first", () => {
+    const { buckets } = morningBuckets(planted(), at);
+    const backlog = buckets.find((b) => b.id === "backlog");
+    assert.deepEqual(backlog.rows.map((r) => r.leadId), ["acme--sourced", "delta--sourced", "quill--sourced"]);
+  });
+
+  await t.test("counts every bucket and puts no Lead in two", () => {
+    const { buckets } = morningBuckets(planted(), at);
+    for (const bucket of buckets) assert.equal(bucket.count, bucket.rows.length);
+    const ids = buckets.flatMap((b) => b.rows.map((r) => r.leadId).filter(Boolean));
+    assert.equal(new Set(ids).size, ids.length);
+    assert.deepEqual(
+      buckets.map((b) => b.count),
+      [3, 2, 4, 3],
+    );
+  });
+
+  await t.test("counts a Company with no Leads as research but one with a declined Lead as not", () => {
+    const corpus = {
+      companies: {
+        empty: company({ slug: "empty", name: "Empty" }),
+        closed: company({ slug: "closed", name: "Closed" }),
+      },
+      people: {},
+      leads: {},
+    };
+    const declined = lead("closed", "Gone Person", { status: "declined" });
+    corpus.people[declined.leadId] = person("closed", "Gone Person");
+    corpus.leads[declined.leadId] = declined;
+
+    const research = morningBuckets(corpus, at).buckets.find((b) => b.id === "research");
+    assert.deepEqual(research.rows.map((r) => r.slug), ["empty"]);
+  });
+
+  await t.test("says what to do about every empty bucket", () => {
+    const { buckets, today: echoed, counts } = morningBuckets({ companies: {}, people: {}, leads: {} }, at);
+    assert.equal(echoed, today);
+    assert.deepEqual(counts, { companies: 0, leads: 0 });
+    for (const bucket of buckets) {
+      assert.equal(bucket.count, 0);
+      assert.deepEqual(bucket.rows, []);
+      assert.ok(bucket.note.length > 0, `${bucket.id} needs a note`);
+      assert.ok(bucket.empty.length > 20, `${bucket.id} needs a next action`);
+    }
+  });
+
+  await t.test("refuses to classify without a calendar day", () => {
+    assert.throws(() => morningBuckets({}, {}), /morning buckets need today/);
+    assert.throws(() => morningBuckets({}, { today: "Wednesday" }), /morning buckets need today/);
+  });
+
+  await t.test("takes the day from the local calendar across a daylight boundary", () => {
+    const springForward = new Date(2026, 2, 8, 1, 30);
+    assert.equal(isoDay(springForward), "2026-03-08");
+
+    const fallBack = new Date(2026, 10, 1, 23, 30);
+    assert.equal(isoDay(fallBack), "2026-11-01");
+
+    const localToday = isoDay(fallBack);
+    const dueLead = lead("acme", "Due Person", { status: "sent", nextTouch: localToday });
+    const nextLead = lead("acme", "Next Person", { status: "sent", nextTouch: addDays(localToday, 1) });
+    const corpus = {
+      companies: { acme: company({ slug: "acme", name: "Acme" }) },
+      people: {
+        [dueLead.leadId]: person("acme", "Due Person"),
+        [nextLead.leadId]: person("acme", "Next Person"),
+      },
+      leads: { [dueLead.leadId]: dueLead, [nextLead.leadId]: nextLead },
+    };
+
+    const due = morningBuckets(corpus, { today: localToday }).buckets.find((b) => b.id === "due");
+    assert.deepEqual(due.rows.map((r) => r.person.name), ["Due Person"]);
   });
 });

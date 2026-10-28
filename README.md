@@ -29,6 +29,22 @@ npm run dev            # http://localhost:4317
 npm test               # node --test, no extra deps
 ```
 
+## The morning screen
+
+`/` answers "what to do now", computed against your local calendar day:
+
+- **Due** — an active Lead whose next touch is today or earlier, or a `revisit`
+  whose date has arrived.
+- **Waiting** — `sent` with no next date: silence you have not timed.
+- **No human yet** — Companies with no Leads, untriaged first, newest batch
+  first.
+- **Backlog** — Leads at `sourced` that are not already due: named, nothing
+  sent.
+
+Every bucket has a count, every row links to its Lead (or Company), and an empty
+bucket says what to do about it. `/leads` is the full corpus table with search
+and status filters.
+
 ## Mock corpus
 
 For UI work there is a generated corpus with no real people in it:
