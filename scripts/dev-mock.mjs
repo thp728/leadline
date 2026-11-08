@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 /**
- * Serve the mock corpus on its own port, leaving `npm run dev` (real data) alone.
+ * Serve the mock corpus on its own port, leaving `pnpm dev` (real data) alone.
  *
- *   npm run dev:mock
- *   npm run dev:mock -- --port 4400
+ *   pnpm dev:mock
+ *   pnpm dev:mock --port 4400
  *
  * The corpus is generated on demand when it is missing, which is the fresh-clone
- * case: `npm install && npm run dev:mock` and there is UI to look at.
+ * case: `pnpm install && pnpm dev:mock` and there is UI to look at.
  */
 
 import fs from "node:fs";
@@ -37,7 +37,7 @@ if (!fs.existsSync(dbFile)) {
 
 const nextBin = path.join("node_modules", "next", "dist", "bin", "next");
 if (!fs.existsSync(nextBin)) {
-  console.error("next is not installed; run npm install first");
+  console.error("next is not installed; run pnpm install first");
   process.exit(1);
 }
 

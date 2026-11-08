@@ -7,6 +7,6 @@ out/
 data/*
 !data/.gitkeep
 
-# Generated mock corpus for UI work. Recreate with `npm run mock`.
+# Generated mock corpus for UI work. Recreate with `pnpm mock`.
 data-mock/
 .next-mock/

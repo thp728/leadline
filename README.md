@@ -24,9 +24,9 @@ Two rules keep it from rotting:
 ## Run
 
 ```powershell
-npm install
-npm run dev            # http://localhost:4317
-npm test               # node --test, no extra deps
+pnpm install
+pnpm dev            # http://localhost:4317
+pnpm test               # node --test, no extra deps
 ```
 
 ## The morning screen
@@ -50,13 +50,13 @@ and status filters.
 For UI work there is a generated corpus with no real people in it:
 
 ```powershell
-npm run mock           # writes data-mock/db.json and its dossiers
-npm run dev:mock       # http://localhost:4318, generates the corpus if missing
+pnpm mock           # writes data-mock/db.json and its dossiers
+pnpm dev:mock       # http://localhost:4318, generates the corpus if missing
 ```
 
 `data-mock/` is gitignored and regenerated from `scripts/mock-data.mjs`, so a
-fresh clone needs only `npm install && npm run dev:mock`. Dates are relative to
-the day you generate it; pass `--today 2026-10-27` to `npm run mock` for a fixed
+fresh clone needs only `pnpm install && pnpm dev:mock`. Dates are relative to
+the day you generate it; pass `--today 2026-10-27` to `pnpm mock` for a fixed
 corpus. The mock writer refuses to target `data/`, and the dev script uses its
 own port and build directory, so it can run beside the real app without
 touching your corpus.
@@ -183,9 +183,9 @@ hand.
 the dev server is running corrupts the dev chunks. Stop the dev server, then:
 
 ```powershell
-npm run clean
-npm run dev
+pnpm clean
+pnpm dev
 ```
 
-Never run `npm run build` with `npm run dev` still up. For production, stop dev
-first and use `npm run build && npm start`.
+Never run `pnpm build` with `pnpm dev` still up. For production, stop dev
+first and use `pnpm build && pnpm start`.

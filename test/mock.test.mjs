@@ -223,7 +223,7 @@ test("the same day builds the same corpus", () => {
   assert.ok(Object.values(later.leads).some((l) => l.nextTouch === day(1)));
 });
 
-test("npm run mock writes a loadable corpus and its dossiers, outside data/", () => {
+test("pnpm mock writes a loadable corpus and its dossiers, outside data/", () => {
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "leadline-mock-"));
   try {
     const run = spawnSync(

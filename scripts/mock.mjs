@@ -3,8 +3,8 @@
  * Write the mock corpus to a gitignored directory so the UI has something real
  * to render before any real lead exists.
  *
- *   npm run mock
- *   npm run mock -- --out data-mock --today 2026-10-27
+ *   pnpm mock
+ *   pnpm mock -- --out data-mock --today 2026-10-27
  *
  * The fixture is deterministic for a given day: same `today`, same bytes. It is
  * written under its own root (`data-mock` by default) and never touches `data/`,
@@ -73,4 +73,4 @@ console.log(
     .map(([status, count]) => `${status}:${count}`)
     .join("  "),
 );
-console.log(`run the UI against it with: npm run dev:mock`);
+console.log(`run the UI against it with: pnpm dev:mock`);
